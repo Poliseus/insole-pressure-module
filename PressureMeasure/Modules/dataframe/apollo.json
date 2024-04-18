@@ -1,0 +1,7 @@
+{
+	"name":"DataFrame Cpp library",
+	"logo":"https://gitlab.nsoric.com/uploads/-/system/project/avatar/116/packet.png",
+	"description":"Simple DataFrame creator",
+	"has_docs": true,
+	"git":"https://gitlab.nsoric.com/mtf/stm32/librararies/dataframe"
+}

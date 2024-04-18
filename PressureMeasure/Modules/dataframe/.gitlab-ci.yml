@@ -1,0 +1,59 @@
+stages: 
+    - checks
+    - build_release
+    - doxy_stage
+
+check-lint:
+    stage: checks
+    image: xianpengshen/clang-tools:14
+    script:
+        - linter_errors=$(clang-format -n ./src/* 2>&1 | grep  -v --color=never "no modified files to format" || true)
+        - echo "$linter_errors"
+        - if [[ ! -z "$linter_errors" ]]; then echo "Detected formatting issues; please fix"; exit 1; else echo "Formatting is correct"; exit 0; fi
+
+build_release:
+    stage: build_release
+    image: python
+    only:
+        - main
+    before_script:
+        - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+        - eval $(ssh-agent -s)
+        - mkdir -p ~/.ssh
+        - chmod 600 ~/.ssh
+        - echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+        - chmod 600 ~/.ssh/id_rsa
+        - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'        
+    script:
+        - ssh -t -t -p 90 $DEST_IP mkdir -p $DEST_PATH/$CI_PROJECT_NAME
+        - scp -r -P 90 ./readme.md $DEST_IP:$DEST_PATH/$CI_PROJECT_NAME/readme.md
+        
+        #files for apollo
+        - (if [ -f apollo.json ]; then scp -r -P 90 ./apollo.json $DEST_IP:$DEST_PATH/$CI_PROJECT_NAME/ ; fi);
+        - (if [ -f changelog.md ]; then scp -r -P 90 ./changelog.md $DEST_IP:$DEST_PATH/$CI_PROJECT_NAME/ ; fi);
+        - (if [ -f LICENSE ]; then scp -r -P 90 ./LICENSE $DEST_IP:$DEST_PATH/$CI_PROJECT_NAME/ ; fi);
+
+        # automatic update project
+        - RQ=$(curl --location --request PUT $APOLLO_API/$CI_PROJECT_NAME --header "apiKey:$APOLLO_KEY")
+        - curl --location $APOLLO_API/$CI_PROJECT_NAME/status --header "apiKey:$APOLLO_KEY" --header Content-Type:application/json --data "$RQ"
+
+doxy_stage:
+    stage: doxy_stage
+    image: hrektts/doxygen
+    only:
+        - main
+    before_script:
+        - 'which ssh-agent || ( apt-get install -qq openssh-client )'
+        - eval $(ssh-agent -s)
+        - mkdir -p ~/.ssh
+        - chmod 600 ~/.ssh
+        - echo "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+        - chmod 600 ~/.ssh/id_rsa
+        - '[[ -f /.dockerenv ]] && echo -e "Host *\n\tStrictHostKeyChecking no\n\n" > ~/.ssh/config'
+    script:
+        #doxygen
+        - doxygen Doxyfile
+        #presun html do docs
+        - ssh -t -t -p 90 $DEST_IP mkdir -p $DEST_PATH/$CI_PROJECT_NAME/docs
+        - scp -r -P 90 ./html/* $DEST_IP:$DEST_PATH/$CI_PROJECT_NAME/docs
+
